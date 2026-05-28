@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #faf8f3;
+  --surface: #ffffff;
+  --text: #1a1813;
+  --muted: #6b665c;
+  --line: #ebe6dc;
+  --chip: #f3efe6;
+  --skeleton: #ece7dc;
+  --accent: #d99c10;
+  --card-radius: 14px;
+  --chip-radius: 999px;
+  --card-shadow: 0 1px 2px rgba(20,18,14,.04);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Manrope", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body { min-height: 100vh; }
+
+input, button, select, textarea { font-family: inherit; }
+input:focus, select:focus, textarea:focus { outline: none; }
+button { cursor: default; }
+
+::selection { background: color-mix(in oklab, var(--accent) 30%, transparent); }
+
+button:hover > .photo-hover { opacity: 1 !important; }
+
+article:hover { transform: translateY(-1px); transition: transform .15s; }
