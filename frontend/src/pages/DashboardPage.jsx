@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Nav, Avatar, Badge, Img, Stars, PinIcon, CheckIcon, primaryBtn } from "../components";
-import { PHOTOGRAPHERS, PHOTOS, SPOTS, OCCASIONS } from "../data";
+import { PHOTOS, OCCASIONS } from "../data";
+import { useData } from "../lib/DataContext";
 
 const dashH3 = { margin: 0, fontSize: 14, fontWeight: 600 };
 const primaryBtnSm = {
@@ -116,6 +117,7 @@ function OverviewSection({ me }) {
 }
 
 function UploadModal({ onClose }) {
+  const { spots: SPOTS } = useData();
   return (
     <div onClick={onClose} style={{
       position: "fixed", inset: 0, zIndex: 100,
@@ -182,6 +184,7 @@ function UploadModal({ onClose }) {
 }
 
 function PortfolioSection({ me }) {
+  const { spots: SPOTS } = useData();
   const [showUpload, setShowUpload] = useState(false);
   const photos = PHOTOS.filter(p => p.photographerId === me.id);
   const grid = [...photos, ...PHOTOS.slice(0, 12)].slice(0, 18);
@@ -310,6 +313,7 @@ function ServicesSection({ me }) {
 }
 
 function SpotsSection({ me }) {
+  const { spots: SPOTS } = useData();
   const myspots = SPOTS.filter(s => me.spots.includes(s.id));
   return (
     <div>
@@ -402,8 +406,13 @@ function SettingsSection() {
   );
 }
 
-export function DashboardPage({ nav, openPhotographer }) {
-  const [section, setSection] = useState("portfolio");
+const DASHBOARD_SECTIONS = ["overview", "portfolio", "profile", "services", "spots", "inquiries", "reviews", "settings"];
+
+export function DashboardPage({ nav, openPhotographer, params, setParams }) {
+  const { photographers: PHOTOGRAPHERS } = useData();
+  if (!PHOTOGRAPHERS.length) return null;
+  const section = DASHBOARD_SECTIONS.includes(params?.section) ? params.section : "portfolio";
+  const setSection = (s) => setParams({ section: s === "portfolio" ? null : s });
   const me = PHOTOGRAPHERS[0];
 
   return (

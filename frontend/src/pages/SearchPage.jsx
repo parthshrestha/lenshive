@@ -1,7 +1,9 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Nav, PhotographerCard, ChevronDown, CheckIcon } from "../components";
 import { MapView } from "../components";
-import { PHOTOGRAPHERS, STYLES, BUDGETS, OCCASIONS } from "../data";
+import { STYLES, BUDGETS, OCCASIONS } from "../data";
+import { DEFAULT_LOCATION, haversineMiles } from "../lib/location";
+import { useData } from "../lib/DataContext";
 
 const chipBtn = {
   all: "unset", cursor: "default",
@@ -54,47 +56,104 @@ function FilterDropdown({ label, badge, children }) {
   );
 }
 
-export function SearchPage({ nav, openPhotographer, initialQuery = "" }) {
-  const [q] = useState(initialQuery || "Graduation photographer");
-  const [loc] = useState("Boulder, CO");
-  const [filters, setFilters] = useState({
-    styles: new Set(),
-    budget: null,
-    occasion: null,
-    distance: 25,
-    rating: 0,
-    verified: false,
-  });
-  const [active, setActive] = useState(null);
-  const [view, setView] = useState("split");
+const VIEW_MODES = ["split", "list", "map"];
 
-  const setF = (patch) => setFilters(f => ({ ...f, ...patch }));
+export function SearchPage({
+  nav,
+  openPhotographer,
+  params = {},
+  setParams,
+  mapsApiKey,
+  location = DEFAULT_LOCATION,
+  geolocating = false,
+  useMyLocation,
+  searchLocation,
+}) {
+  const { photographers } = useData();
+
+  // The search box lives in Nav (header). It submits via onNav("search", {q,...}),
+  // which lands the query in the URL — so we just read it back from params here.
+  const q = params.q ?? "";
+
+  const view = VIEW_MODES.includes(params.view) ? params.view : "split";
+  const setView = (v) => setParams({ view: v === "split" ? null : v });
+
+  // Filters are URL-encoded so a filtered result page is shareable.
+  const filters = useMemo(() => ({
+    styles: new Set(params.styles ? params.styles.split(",").filter(Boolean) : []),
+    budget: params.budget || null,
+    occasion: params.occasion || null,
+    distance: Number(params.distance) || 25,
+    rating: Number(params.rating) || 0,
+    verified: params.verified === "1",
+  }), [params.styles, params.budget, params.occasion, params.distance, params.rating, params.verified]);
+
+  const [active, setActive] = useState(null);
+
+  const setF = (patch) => {
+    const next = { ...filters, ...patch };
+    setParams({
+      styles: next.styles.size ? [...next.styles].join(",") : null,
+      budget: next.budget || null,
+      occasion: next.occasion || null,
+      distance: next.distance === 25 ? null : next.distance,
+      rating: next.rating ? next.rating : null,
+      verified: next.verified ? "1" : null,
+    });
+  };
   const toggleStyle = (s) => {
     const next = new Set(filters.styles);
     next.has(s) ? next.delete(s) : next.add(s);
     setF({ styles: next });
   };
 
+  const terms = useMemo(() => {
+    const noise = new Set(["photographer", "photographers", "photography", "photo", "photos", "in", "near", "the", "a", "for", "and", "with", "co"]);
+    return q.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length > 2 && !noise.has(t));
+  }, [q]);
+
   const filtered = useMemo(() => {
-    return PHOTOGRAPHERS.filter(p => {
-      if (filters.styles.size && !p.styles.some(s => filters.styles.has(s))) return false;
-      if (filters.budget) {
-        const b = BUDGETS.find(x => x.key === filters.budget);
-        if (b && (p.startingPrice < b.min || p.startingPrice > b.max)) return false;
-      }
-      if (filters.occasion && !p.services.includes(filters.occasion)) return false;
-      if (p.distance > filters.distance) return false;
-      if (filters.rating && p.rating < filters.rating) return false;
-      if (filters.verified && !p.trustSignals.includes("Verified")) return false;
-      return true;
-    });
-  }, [filters]);
+    return photographers
+      .map(p => ({
+        ...p,
+        distance: Math.round(haversineMiles(location, { lat: p.lat, lng: p.lng })),
+      }))
+      .filter(p => {
+        if (terms.length) {
+          const haystack = [
+            p.name, p.location, p.serviceArea || "",
+            ...p.services, ...p.styles,
+          ].join(" ").toLowerCase();
+          if (!terms.some(t => haystack.includes(t))) return false;
+        }
+        if (filters.styles.size && !p.styles.some(s => filters.styles.has(s))) return false;
+        if (filters.budget) {
+          const b = BUDGETS.find(x => x.key === filters.budget);
+          if (b && (p.startingPrice < b.min || p.startingPrice > b.max)) return false;
+        }
+        if (filters.occasion && !p.services.includes(filters.occasion)) return false;
+        if (p.distance > filters.distance) return false;
+        if (filters.rating && p.rating < filters.rating) return false;
+        if (filters.verified && !p.trustSignals.includes("Verified")) return false;
+        return true;
+      })
+      .sort((a, b) => a.distance - b.distance);
+  }, [filters, terms, location, photographers]);
 
   const count = filtered.length;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      <Nav route="search" onNav={nav} compact />
+      <Nav
+        route="search"
+        onNav={nav}
+        compact
+        query={q}
+        location={location}
+        geolocating={geolocating}
+        useMyLocation={useMyLocation}
+        searchLocation={searchLocation}
+      />
 
       <div style={{
         display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
@@ -196,7 +255,7 @@ export function SearchPage({ nav, openPhotographer, initialQuery = "" }) {
       }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, letterSpacing: "-.015em" }}>
-            {count} photographers near {loc}
+            {count} photographers near {location.label}
           </h1>
           <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 3 }}>
             Showing results for <span style={{ color: "var(--text)" }}>"{q}"</span>
@@ -252,6 +311,8 @@ export function SearchPage({ nav, openPhotographer, initialQuery = "" }) {
               kind="photographer"
               height="100%"
               style="standard"
+              apiKey={mapsApiKey}
+              center={location}
             />
           </div>
         )}

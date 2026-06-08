@@ -3,7 +3,8 @@ import {
   Nav, Footer, Img, Avatar, Badge, Stars, SpotCard,
   VerifiedBadgeInline, PinIcon, HeartIcon, ShareIcon, CheckIcon,
 } from "../components";
-import { PHOTOGRAPHERS, PHOTOS, SPOTS, OCCASIONS, BUDGETS } from "../data";
+import { PHOTOS, OCCASIONS, BUDGETS } from "../data";
+import { useData } from "../lib/DataContext";
 
 const iconBtn = {
   all: "unset", cursor: "default",
@@ -126,12 +127,18 @@ function QuoteModal({ photographer, onClose }) {
   );
 }
 
-export function ProfilePage({ nav, photographerId, openSpot }) {
+const PROFILE_TABS = ["about", "portfolio", "reviews", "services", "availability"];
+
+export function ProfilePage({ nav, photographerId, openSpot, params, setParams }) {
+  const { photographers: PHOTOGRAPHERS, spots: SPOTS } = useData();
+  // Hooks must run on every render — keep useState above any early return.
+  const [showQuote, setShowQuote] = useState(false);
+  if (!PHOTOGRAPHERS.length) return null;
   const p = PHOTOGRAPHERS.find(x => x.id === photographerId) || PHOTOGRAPHERS[0];
   const photos = PHOTOS.filter(ph => ph.photographerId === p.id);
   const spots = SPOTS.filter(s => p.spots.includes(s.id));
-  const [tab, setTab] = useState("about");
-  const [showQuote, setShowQuote] = useState(false);
+  const tab = PROFILE_TABS.includes(params?.tab) ? params.tab : "about";
+  const setTab = (t) => setParams({ tab: t === "about" ? null : t });
 
   return (
     <div>

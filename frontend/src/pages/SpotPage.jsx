@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Nav, Footer, Img, Badge, Avatar, Stars, PhotographerCard, PinIcon, HeartIcon, ShareIcon } from "../components";
 import { MapView } from "../components";
-import { SPOTS, PHOTOS, PHOTOGRAPHERS } from "../data";
+import { PHOTOS } from "../data";
+import { useData } from "../lib/DataContext";
 
 const iconBtn = {
   all: "unset", cursor: "default",
@@ -96,11 +97,14 @@ function PhotoModal({ photo, onClose, onOpen }) {
   );
 }
 
-export function SpotPage({ nav, spotId, openPhotographer }) {
+export function SpotPage({ nav, spotId, openPhotographer, mapsApiKey }) {
+  const { photographers: PHOTOGRAPHERS, spots: SPOTS } = useData();
+  // Hooks before any early return so hook order stays stable across loading states.
+  const [openPhoto, setOpenPhoto] = useState(null);
+  if (!SPOTS.length) return null;
   const spot = SPOTS.find(s => s.id === spotId) || SPOTS[0];
   const photos = PHOTOS.filter(p => p.spotId === spot.id);
   const photographers = PHOTOGRAPHERS.filter(p => p.spots.includes(spot.id));
-  const [openPhoto, setOpenPhoto] = useState(null);
 
   return (
     <div>
@@ -196,7 +200,7 @@ export function SpotPage({ nav, spotId, openPhotographer }) {
 
         <aside style={{ position: "sticky", top: 88, alignSelf: "flex-start", display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ height: 280, borderRadius: "var(--card-radius)", overflow: "hidden", border: "1px solid var(--line)" }}>
-            <MapView items={[{ ...spot }]} kind="spot" style="standard" height="100%" />
+            <MapView items={[{ ...spot }]} kind="spot" style="standard" height="100%" apiKey={mapsApiKey} />
           </div>
           <div style={{
             padding: 18, border: "1px solid var(--line)",

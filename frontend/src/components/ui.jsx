@@ -1,4 +1,99 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useAuth } from "../lib/AuthContext";
+import { placesAutocomplete } from "../lib/location";
+
+// Signed-in user icon with a dropdown menu (My account / Log out).
+// Only renders when there's a logged-in user; the signed-out state is handled
+// in Nav with the original Log in / Sign up buttons.
+function UserMenu({ onNav }) {
+  const { me, signOut } = useAuth();
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  if (!me) return null;
+
+  const go = (fn) => () => { setOpen(false); fn(); };
+  const initial = (me.name || me.username || me.email || "?").trim().charAt(0).toUpperCase();
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Account menu (${me.username || me.name || me.email})`}
+        title={me.username || me.name || me.email}
+        className="grid h-9 w-9 cursor-default place-items-center rounded-full border border-[var(--line)] bg-[var(--surface)] text-[var(--text)] transition-[border-color,color] hover:border-[var(--accent)]"
+      >
+        <span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--chip)] text-[12.5px] font-semibold text-[var(--muted)]">
+          {initial}
+        </span>
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-[calc(100%+8px)] z-50 w-[220px] overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface)] shadow-[0_18px_44px_rgba(20,16,8,.18)]"
+        >
+          <div className="border-b border-[var(--line)] px-4 py-3">
+            <div className="truncate text-[13.5px] font-semibold text-[var(--text)]">{me.name || me.username}</div>
+            <div className="truncate text-[12px] text-[var(--muted)]">{me.email}</div>
+          </div>
+          <MenuItem onClick={go(() => onNav("dashboard"))} icon={<UserIcon />}>My account</MenuItem>
+          <MenuItem onClick={go(signOut)} icon={<LogoutIcon />} variant="danger">Log out</MenuItem>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MenuItem({ onClick, icon, children, variant = "default" }) {
+  const color = variant === "danger"
+    ? "text-[#b3261e]"
+    : variant === "accent"
+      ? "text-[var(--accent)]"
+      : "text-[var(--text)]";
+  return (
+    <button
+      role="menuitem"
+      onClick={onClick}
+      className={`flex w-full cursor-default items-center gap-2.5 px-4 py-2.5 text-left text-[13.5px] font-medium ${color} hover:bg-[var(--chip)]`}
+    >
+      <span className="grid h-4 w-4 shrink-0 place-items-center opacity-80">{icon}</span>
+      {children}
+    </button>
+  );
+}
+
+function UserIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" />
+    </svg>
+  );
+}
+function LogoutIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </svg>
+  );
+}
 
 const badgeClasses = {
   default: "bg-[var(--chip)] text-[var(--text)]",
@@ -128,6 +223,15 @@ export function PinIcon({ size = 16, color = "currentColor" }) {
   );
 }
 
+export function CrosshairIcon({ size = 15, color = "currentColor" }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+      <circle cx="8" cy="8" r="3.2" />
+      <path d="M8 1v2.2M8 12.8V15M1 8h2.2M12.8 8H15" />
+    </svg>
+  );
+}
+
 export function HeartIcon({ size = 18, filled = false }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? "var(--accent)" : "none"} stroke={filled ? "var(--accent)" : "currentColor"} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -163,13 +267,76 @@ export function CheckIcon({ size = 12 }) {
   );
 }
 
-export function Nav({ onNav, compact = false }) {
+export function Nav({ onNav, compact = false, location, geolocating, useMyLocation, searchLocation, query = "" }) {
+  const { me } = useAuth();
   const items = [
     { key: "explore", label: "Explore" },
     { key: "photographers", label: "Photographers" },
     { key: "spots", label: "Photo Spots" },
     { key: "how", label: "How it works" },
   ];
+
+  const [locText, setLocText] = useState(location?.label || "");
+  const [queryText, setQueryText] = useState(query);
+
+  // Autocomplete dropdown state for the location field.
+  const [predictions, setPredictions] = useState([]);
+  const [showAc, setShowAc] = useState(false);
+  const acRef = useRef(null);
+
+  // Keep the location field in sync when the resolved location changes
+  // (geolocation on load, "my location" click, or a typed search).
+  useEffect(() => {
+    if (location?.label) setLocText(location.label);
+  }, [location?.label]);
+
+  // Debounced Places Autocomplete. Bias around the current location so
+  // ambiguous queries (e.g. "Chautauqua Park") prefer the nearby match.
+  useEffect(() => {
+    const text = locText.trim();
+    if (!text || text === location?.label) {
+      setPredictions([]);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      try {
+        const preds = await placesAutocomplete(text, location);
+        setPredictions(preds);
+      } catch {
+        setPredictions([]);
+      }
+    }, 220);
+    return () => clearTimeout(handle);
+  }, [locText, location?.lat, location?.lng, location?.label]);
+
+  // Close the dropdown on outside click.
+  useEffect(() => {
+    if (!showAc) return;
+    const onClick = (e) => { if (acRef.current && !acRef.current.contains(e.target)) setShowAc(false); };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [showAc]);
+
+  const submit = () => {
+    const text = locText.trim();
+    if (text && text !== location?.label) searchLocation?.(text);
+    setShowAc(false);
+    onNav("search", { q: queryText, kind: "photographer" });
+  };
+
+  const pickPrediction = (p) => {
+    const label = p.mainText || p.description || "";
+    setLocText(label);
+    setPredictions([]);
+    setShowAc(false);
+    searchLocation?.({ placeId: p.placeId, label });
+    onNav("search", { q: queryText, kind: "photographer" });
+  };
+
+  const onKey = (e) => {
+    if (e.key === "Escape") { setShowAc(false); return; }
+    if (e.key === "Enter") submit();
+  };
 
   return (
     <header className="sticky top-0 z-50 flex items-center gap-6 border-b border-[var(--line)] bg-[var(--bg)] px-7 py-3.5">
@@ -181,12 +348,51 @@ export function Nav({ onNav, compact = false }) {
       </button>
 
       {compact ? (
-        <div className="flex max-w-[460px] flex-1 items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface)] py-1.5 pl-3.5 pr-1.5">
-          <SearchIcon size={14} />
-          <input className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--text)]" placeholder="Boulder, CO" defaultValue="Boulder, CO" />
+        <div className="flex max-w-[480px] flex-1 items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface)] py-1.5 pl-3.5 pr-1.5">
+          <div ref={acRef} className="relative flex min-w-0 flex-1 items-center gap-2">
+            <SearchIcon size={14} />
+            <input
+              className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--text)] outline-none"
+              placeholder="City or address"
+              value={locText}
+              onChange={(e) => { setLocText(e.target.value); setShowAc(true); }}
+              onFocus={() => setShowAc(true)}
+              onKeyDown={onKey}
+            />
+            <button
+              onClick={() => { setShowAc(false); useMyLocation?.(); }}
+              title="Use my location"
+              className={`grid h-[26px] w-[26px] shrink-0 cursor-default place-items-center rounded-full text-[var(--muted)] hover:text-[var(--accent)] ${geolocating ? "animate-pulse text-[var(--accent)]" : ""}`}
+            >
+              <CrosshairIcon size={15} />
+            </button>
+            {showAc && predictions.length > 0 && (
+              <div className="absolute left-0 top-[calc(100%+10px)] z-50 w-[320px] overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface)] shadow-[0_18px_44px_rgba(20,16,8,.18)]">
+                {predictions.map(p => (
+                  <button
+                    key={p.placeId}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => pickPrediction(p)}
+                    className="flex w-full cursor-default flex-col items-start gap-0.5 border-b border-[var(--line)] px-4 py-2.5 text-left last:border-0 hover:bg-[var(--chip)]"
+                  >
+                    <span className="truncate text-[13px] font-medium text-[var(--text)]">{p.mainText || p.description}</span>
+                    {p.secondaryText && (
+                      <span className="truncate text-[11.5px] text-[var(--muted)]">{p.secondaryText}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="h-[18px] w-px bg-[var(--line)]" />
-          <input className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--text)]" placeholder="Graduation photographer" defaultValue="Graduation photographer" />
-          <button className="grid h-[30px] w-[30px] shrink-0 cursor-default place-items-center rounded-full bg-[var(--accent)]">
+          <input
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-[var(--text)] outline-none"
+            placeholder="Graduation photographer"
+            value={queryText}
+            onChange={(e) => setQueryText(e.target.value)}
+            onKeyDown={onKey}
+          />
+          <button onClick={submit} className="grid h-[30px] w-[30px] shrink-0 cursor-default place-items-center rounded-full bg-[var(--accent)]">
             <SearchIcon size={13} color="white" />
           </button>
         </div>
@@ -201,9 +407,14 @@ export function Nav({ onNav, compact = false }) {
       )}
 
       <div className="ml-auto flex items-center gap-2.5">
-        <button className="cursor-default whitespace-nowrap px-0.5 py-1.5 text-[13.5px] font-medium text-[var(--text)]" onClick={() => onNav("dashboard")}>Dashboard</button>
-        <button className="cursor-default whitespace-nowrap px-0.5 py-1.5 text-[13.5px] font-medium text-[var(--text)]">Log in</button>
-        <button onClick={() => onNav("dashboard")} className="cursor-default rounded-lg bg-[var(--accent)] px-4 py-2 text-[13.5px] font-semibold text-white">Sign up</button>
+        {me ? (
+          <UserMenu onNav={onNav} />
+        ) : (
+          <>
+            <button className="cursor-default whitespace-nowrap px-0.5 py-1.5 text-[13.5px] font-medium text-[var(--text)]" onClick={() => onNav("login")}>Log in</button>
+            <button onClick={() => onNav("signup")} className="cursor-default rounded-lg bg-[var(--accent)] px-4 py-2 text-[13.5px] font-semibold text-white">Sign up</button>
+          </>
+        )}
       </div>
     </header>
   );

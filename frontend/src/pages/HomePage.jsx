@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Nav, Footer, Img, SearchIcon, HiveMark, SpotCard, PhotographerCard } from "../components";
-import { SPOTS, PHOTOGRAPHERS, CATEGORIES } from "../data";
+import { CATEGORIES } from "../data";
+import { useData } from "../lib/DataContext";
+import { useAuth } from "../lib/AuthContext";
 
 function CategoryGlyph({ k }) {
   const stroke = "var(--accent)";
@@ -43,9 +45,20 @@ function CategoryTile({ cat, onClick }) {
   );
 }
 
-export function HomePage({ nav, openSpot, openPhotographer }) {
-  const [tab, setTab] = useState("spot");
+export function HomePage({ nav, openSpot, openPhotographer, params, setParams }) {
+  const { photographers: PHOTOGRAPHERS, spots: SPOTS } = useData();
+  const { me } = useAuth();
+  const tab = params?.tab === "photographer" ? "photographer" : "spot";
+  const setTab = (k) => setParams({ tab: k === "spot" ? null : k });
   const [q, setQ] = useState("");
+
+  // "FOR PHOTOGRAPHERS" CTA: signed-in users go to their dashboard
+  // (DashboardRoute dispatches creator vs user view); signed-out users land
+  // on the signup form with the photographer role pre-selected.
+  const onPhotographerCta = () => {
+    if (me) nav("dashboard");
+    else nav("signup", null, { params: { role: "photographer" } });
+  };
   const popular = tab === "spot"
     ? ["Chautauqua Park", "Red Rocks", "Pearl Street", "Lost Gulch"]
     : ["Graduation", "Wedding", "Family", "Headshots"];
@@ -54,7 +67,7 @@ export function HomePage({ nav, openSpot, openPhotographer }) {
     <div>
       <Nav route="home" onNav={nav} />
 
-      <section style={{ position: "relative", padding: "0 28px", marginTop: 0 }}>
+      <section className="" style={{ position: "relative", padding: "0 28px", marginTop: 6 }}>
         <div style={{
           position: "relative",
           maxWidth: 1400, margin: "0 auto",
@@ -74,8 +87,9 @@ export function HomePage({ nav, openSpot, openPhotographer }) {
             <p style={{ margin: 0, fontSize: 16, color: "var(--muted)", maxWidth: 460, lineHeight: 1.5 }}>
               Browse real photo examples from local spots and connect with the photographer who captured them.
             </p>
-
-            <div style={{ display: "flex", gap: 4, padding: 4, background: "rgba(255,255,255,.7)", borderRadius: 999, alignSelf: "flex-start" }}>
+            <div className="bg-amber-50 rounded-2xl">
+              <div className="p-0, bg-gray-500, flex-row ">
+              {/* <div className="p-4, bg-gray-500, flex-row border-4" /*style={{ display: "flex", gap: 4, padding: 4, background: "rgba(255,255,255,.7)", borderRadius: 999, alignSelf: "flex-start" }}/ > */}
               {[
                 { k: "spot", label: "Search by Spot" },
                 { k: "photographer", label: "Search by Photographer" },
@@ -110,6 +124,8 @@ export function HomePage({ nav, openSpot, openPhotographer }) {
                 borderRadius: 8, fontSize: 14, fontWeight: 600,
               }}>Search</button>
             </form>
+            </div>
+            
 
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12.5, color: "var(--muted)" }}>
               <span>Popular:</span>
@@ -201,7 +217,7 @@ export function HomePage({ nav, openSpot, openPhotographer }) {
             <h3 style={{ margin: "0 0 6px", fontSize: 22, fontWeight: 600, letterSpacing: "-.015em" }}>List your work. Get found by the right clients.</h3>
             <div style={{ fontSize: 13.5, opacity: .8 }}>Free to join. Show your portfolio tied to the real locations you shoot.</div>
           </div>
-          <button onClick={() => nav("dashboard")} style={{
+          <button onClick={onPhotographerCta} style={{
             all: "unset", cursor: "default",
             padding: "12px 22px", background: "white", color: "#1f3a32",
             borderRadius: 8, fontSize: 14, fontWeight: 600,
