@@ -373,7 +373,9 @@ export function AuthPage({ nav, initialMode = "signin", params = {}, setParams }
   const doSignIn = () => run(async () => {
     await signIn({ usernameOrEmail: signinId.trim(), password: signinPw });
     await refresh();
-    nav("home");
+    // Land on the role-appropriate dashboard; DashboardRoute bounces fresh
+    // accounts to /onboarding first.
+    nav("dashboard");
   });
   // Live password validation state, recomputed every render (cheap; just regex checks).
   const pwState = evalPw(suPw);
@@ -403,7 +405,7 @@ export function AuthPage({ nav, initialMode = "signin", params = {}, setParams }
     await confirmSignUp({ username: pendingUsername, code: confirmCode.trim() });
     await signIn({ usernameOrEmail: pendingUsername, password: suPw });
     await refresh();
-    nav("home");
+    nav("dashboard");
   });
 
   const switchMode = (next) => {

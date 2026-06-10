@@ -114,6 +114,20 @@ async def get_current_user(
     return user
 
 
+async def require_admin(user: User = Depends(get_current_user)) -> User:
+    """Gate for admin-only routes."""
+    if user.role != UserRole.admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
+async def require_creator(user: User = Depends(get_current_user)) -> User:
+    """Gate for routes open to photographers/videographers (and admins)."""
+    if user.role not in (UserRole.photographer, UserRole.videographer, UserRole.admin):
+        raise HTTPException(status_code=403, detail="Creator access required")
+    return user
+
+
 async def get_current_user_optional(
     request: Request,
     db: AsyncSession = Depends(get_session),

@@ -2,6 +2,6 @@
 the final FastAPI app.
 """
 
-from . import catalog, maps, users
+from . import admin, catalog, maps, payments, spots, suggestions, users
 
-__all__ = ["catalog", "maps", "users"]
+__all__ = ["admin", "catalog", "maps", "payments", "spots", "suggestions", "users"]

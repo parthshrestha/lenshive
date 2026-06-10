@@ -11,6 +11,20 @@ class UserRole(str, enum.Enum):
     robot = "robot"
 
 
+class VerificationStatus(str, enum.Enum):
+    """Stripe Connect identity/business (SSN/EIN) verification progress.
+    Photographers stay public-profile-only until `verified`."""
+    unverified = "unverified"
+    pending = "pending"
+    verified = "verified"
+
+
+class SuggestionStatus(str, enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+
+
 class BookingStatus(str, enum.Enum):
     pending = "pending"
     confirmed = "confirmed"

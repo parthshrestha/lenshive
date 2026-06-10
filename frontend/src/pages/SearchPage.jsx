@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Nav, PhotographerCard, ChevronDown, CheckIcon } from "../components";
+import { Nav, PhotographerCard, ChevronDown, CheckIcon, findDuplicateSpot } from "../components";
 import { MapView } from "../components";
 import { STYLES, BUDGETS, OCCASIONS } from "../data";
 import { DEFAULT_LOCATION, haversineMiles } from "../lib/location";
@@ -69,7 +69,7 @@ export function SearchPage({
   useMyLocation,
   searchLocation,
 }) {
-  const { photographers } = useData();
+  const { photographers, spots } = useData();
 
   // The search box lives in Nav (header). It submits via onNav("search", {q,...}),
   // which lands the query in the URL — so we just read it back from params here.
@@ -112,13 +112,40 @@ export function SearchPage({
     return q.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length > 2 && !noise.has(t));
   }, [q]);
 
+  // When the searched location is a specific place (park, POI, address —
+  // not a city), try to resolve it to a LensHive spot: by Google place_id
+  // first, then by proximity. A match switches the page into "tagged only"
+  // mode: just photographers who published photos at that spot.
+  const spotMatch = useMemo(() => {
+    if (location.kind !== "specific") return null;
+    return findDuplicateSpot(spots, location.placeId, location.lat, location.lng);
+  }, [location.kind, location.placeId, location.lat, location.lng, spots]);
+
+  // Coordinates of each spot, for measuring how far a photographer's
+  // *portfolio* is from the searched area (vs. where they live).
+  const spotCoords = useMemo(() => {
+    const m = new Map();
+    for (const s of spots) m.set(s.id, { lat: s.lat, lng: s.lng });
+    return m;
+  }, [spots]);
+
   const filtered = useMemo(() => {
     return photographers
-      .map(p => ({
-        ...p,
-        distance: Math.round(haversineMiles(location, { lat: p.lat, lng: p.lng })),
-      }))
+      .map(p => {
+        // Portfolio distance: the nearest spot they've shot at. Falls back to
+        // their home base for photographers with no tagged spots yet.
+        const spotDists = (p.spots || [])
+          .map(slug => spotCoords.get(slug))
+          .filter(Boolean)
+          .map(c => haversineMiles(location, c));
+        const portfolioDistance = spotDists.length
+          ? Math.min(...spotDists)
+          : haversineMiles(location, { lat: p.lat, lng: p.lng });
+        return { ...p, distance: Math.round(portfolioDistance) };
+      })
       .filter(p => {
+        // Specific spot search → only photographers tagged to that spot.
+        if (spotMatch && !(p.spots || []).includes(spotMatch.id)) return false;
         if (terms.length) {
           const haystack = [
             p.name, p.location, p.serviceArea || "",
@@ -132,13 +159,15 @@ export function SearchPage({
           if (b && (p.startingPrice < b.min || p.startingPrice > b.max)) return false;
         }
         if (filters.occasion && !p.services.includes(filters.occasion)) return false;
-        if (p.distance > filters.distance) return false;
+        // The radius filter only applies to area searches; an exact spot
+        // match already pins the location.
+        if (!spotMatch && p.distance > filters.distance) return false;
         if (filters.rating && p.rating < filters.rating) return false;
         if (filters.verified && !p.trustSignals.includes("Verified")) return false;
         return true;
       })
       .sort((a, b) => a.distance - b.distance);
-  }, [filters, terms, location, photographers]);
+  }, [filters, terms, location, photographers, spotMatch, spotCoords]);
 
   const count = filtered.length;
 
@@ -255,10 +284,16 @@ export function SearchPage({
       }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, letterSpacing: "-.015em" }}>
-            {count} photographers near {location.label}
+            {spotMatch
+              ? `${count} photographers who shot at ${spotMatch.name}`
+              : `${count} photographers near ${location.label}`}
           </h1>
           <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 3 }}>
-            Showing results for <span style={{ color: "var(--text)" }}>"{q}"</span>
+            {spotMatch
+              ? <>Only photographers with photos tagged to this spot{q ? <> · matching <span style={{ color: "var(--text)" }}>"{q}"</span></> : null}</>
+              : location.kind === "specific"
+                ? <>This exact place isn't a LensHive spot yet — showing photographers with portfolios nearby{q ? <> for <span style={{ color: "var(--text)" }}>"{q}"</span></> : null}.</>
+                : <>Showing results for <span style={{ color: "var(--text)" }}>"{q}"</span></>}
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--muted)" }}>
@@ -282,7 +317,9 @@ export function SearchPage({
           }}>
             {filtered.length === 0 ? (
               <div style={{ padding: 40, textAlign: "center", color: "var(--muted)" }}>
-                No photographers match these filters.
+                {spotMatch
+                  ? `No photographers have published photos at ${spotMatch.name} yet.`
+                  : "No photographers match these filters."}
               </div>
             ) : view === "list" ? (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>

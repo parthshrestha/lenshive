@@ -8,13 +8,16 @@ from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
-from .routers import catalog, maps, users  # noqa: E402  (load_dotenv first)
+from .routers import admin, catalog, maps, payments, spots, suggestions, users  # noqa: E402  (load_dotenv first)
 
 app = FastAPI(title="LensHive API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173", "http://127.0.0.1:5173",
+        "http://localhost:5174", "http://127.0.0.1:5174",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -22,3 +25,7 @@ app.add_middleware(
 app.include_router(maps.router)
 app.include_router(catalog.router)
 app.include_router(users.router)
+app.include_router(spots.router)
+app.include_router(suggestions.router)
+app.include_router(payments.router)
+app.include_router(admin.router)

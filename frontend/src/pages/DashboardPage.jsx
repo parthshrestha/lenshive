@@ -1,7 +1,9 @@
-import { useState } from "react";
-import { Nav, Avatar, Badge, Img, Stars, PinIcon, CheckIcon, primaryBtn } from "../components";
+import { useEffect, useState } from "react";
+import { Nav, Avatar, Badge, Img, LocationPicker, Stars, PinIcon, CheckIcon, primaryBtn } from "../components";
 import { PHOTOS, OCCASIONS } from "../data";
 import { useData } from "../lib/DataContext";
+import { useAuth } from "../lib/AuthContext";
+import { createSpot, stripeConnectStart, stripeConnectStatus } from "../lib/api";
 
 const dashH3 = { margin: 0, fontSize: 14, fontWeight: 600 };
 const primaryBtnSm = {
@@ -312,13 +314,160 @@ function ServicesSection({ me }) {
   );
 }
 
+// Modal for photographers to put a new location on LensHive. The Google
+// autocomplete fills coordinates; if the place is already in the catalog the
+// existing spot is shown instead of allowing a duplicate.
+function AddSpotModal({ onClose }) {
+  const { spots: SPOTS, reload } = useData();
+  const [picked, setPicked] = useState(null);
+  const [duplicate, setDuplicate] = useState(null);
+  const [bestTime, setBestTime] = useState("");
+  const [bestFor, setBestFor] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [done, setDone] = useState(null);
+
+  const submit = async () => {
+    if (!picked) { setError("Search for the place first so we get its exact location."); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const spot = await createSpot({
+        name: picked.name,
+        city: picked.city,
+        bestTime: bestTime.trim(),
+        notes: notes.trim(),
+        bestFor: bestFor.split(",").map(s => s.trim()).filter(Boolean),
+        lat: picked.lat,
+        lng: picked.lng,
+        placeId: picked.placeId,
+      });
+      await reload();
+      setDone(spot);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div onClick={onClose} style={{
+      position: "fixed", inset: 0, zIndex: 100,
+      background: "rgba(20,18,14,.7)", backdropFilter: "blur(4px)",
+      display: "grid", placeItems: "center", padding: 40,
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: "var(--surface)", borderRadius: 14,
+        width: 520, padding: 28, boxShadow: "0 20px 60px -10px rgba(0,0,0,.4)",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 22, fontWeight: 600, letterSpacing: "-.015em" }}>Add a photo spot</h2>
+            <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 4 }}>
+              Put a new location on LensHive so you can tag photos to it
+            </div>
+          </div>
+          <button onClick={onClose} style={{
+            all: "unset", cursor: "default",
+            width: 28, height: 28, borderRadius: "50%",
+            background: "var(--chip)", display: "grid", placeItems: "center",
+            color: "var(--muted)", fontSize: 14,
+          }}>×</button>
+        </div>
+
+        {done ? (
+          <div style={{ marginTop: 20 }}>
+            <div style={{
+              padding: "14px 16px", borderRadius: 10, fontSize: 13.5,
+              border: "1px solid color-mix(in oklab, #2d5d4f 35%, transparent)",
+              background: "color-mix(in oklab, #2d5d4f 8%, transparent)", color: "#2d5d4f",
+            }}>
+              <strong>{done.name}</strong> is now on LensHive — you can tag photos to it from your portfolio.
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>
+              <button onClick={onClose} style={primaryBtnSm}>Done</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div style={{ marginTop: 20 }}>
+              <Field label="Location">
+                <LocationPicker
+                  spots={SPOTS}
+                  onSelect={(p, dup) => { setPicked(p); setDuplicate(dup); setError(null); }}
+                  placeholder="Search Google Maps for the spot…"
+                />
+              </Field>
+              {picked && !duplicate && (
+                <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>
+                  <PinIcon size={11} color="var(--accent)" />
+                  {picked.formatted} ({picked.lat.toFixed(4)}, {picked.lng.toFixed(4)})
+                </div>
+              )}
+              {duplicate && (
+                <div style={{
+                  marginTop: 10, padding: "12px 14px", borderRadius: 10, fontSize: 13,
+                  border: "1px solid color-mix(in oklab, var(--accent) 40%, transparent)",
+                  background: "color-mix(in oklab, var(--accent) 7%, transparent)",
+                }}>
+                  <strong>{duplicate.name}</strong> ({duplicate.city}) is already on LensHive —
+                  no need to add it again. Tag your photos to it from your portfolio.
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Best time (optional)">
+                <input style={selectStyleD} value={bestTime} onChange={e => setBestTime(e.target.value)} placeholder="Golden hour" />
+              </Field>
+              <Field label="Best for (optional, comma-separated)">
+                <input style={selectStyleD} value={bestFor} onChange={e => setBestFor(e.target.value)} placeholder="Engagement, Family" />
+              </Field>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <Field label="Notes (optional)">
+                  <textarea
+                    style={{ ...selectStyleD, minHeight: 70, fontFamily: "inherit", resize: "vertical" }}
+                    value={notes} onChange={e => setNotes(e.target.value)}
+                    placeholder="Parking, permits, lighting tips…"
+                  />
+                </Field>
+              </div>
+            </div>
+
+            {error && <div style={{ marginTop: 12, fontSize: 13, color: "#b3261e" }}>{error}</div>}
+
+            <div style={{ display: "flex", gap: 10, marginTop: 22 }}>
+              <button onClick={onClose} style={{
+                all: "unset", cursor: "default",
+                padding: "11px 18px", border: "1px solid var(--line)",
+                borderRadius: 8, fontSize: 13.5, fontWeight: 600,
+              }}>Cancel</button>
+              <div style={{ flex: 1 }} />
+              <button
+                onClick={submit}
+                disabled={saving || !!duplicate}
+                style={{ ...primaryBtnSm, opacity: saving || duplicate ? 0.5 : 1 }}
+              >
+                {saving ? "Adding…" : "Add spot"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SpotsSection({ me }) {
   const { spots: SPOTS } = useData();
+  const [showAdd, setShowAdd] = useState(false);
   const myspots = SPOTS.filter(s => me.spots.includes(s.id));
   return (
     <div>
       <SectionHeader title="Photo spots" subtitle="The locations you frequently shoot at. Helps clients find you from spot pages." action={
-        <button style={primaryBtnSm}>+ Add spot</button>
+        <button onClick={() => setShowAdd(true)} style={primaryBtnSm}>+ Add spot</button>
       } />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginTop: 22 }}>
         {myspots.map(s => (
@@ -334,6 +483,7 @@ function SpotsSection({ me }) {
           </div>
         ))}
       </div>
+      {showAdd && <AddSpotModal onClose={() => setShowAdd(false)} />}
     </div>
   );
 }
@@ -395,6 +545,132 @@ function ReviewsSection({ me }) {
   );
 }
 
+// "Start earning" checklist. Photographers must verify their identity or
+// business (SSN/EIN) through Stripe Connect before they can take bookings —
+// until then their profile is public but booking is locked.
+function EarningsSection({ authMe, params }) {
+  const pInfo = authMe?.photographer || null;
+  const [status, setStatus] = useState(pInfo?.verificationStatus || "unverified");
+  const [stripeMsg, setStripeMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  // Sync with Stripe when an account exists or we just returned from their
+  // hosted onboarding flow (?stripe=return / ?stripe=refresh).
+  useEffect(() => {
+    if (!pInfo?.stripeAccountId && !params?.stripe) return;
+    stripeConnectStatus()
+      .then(s => setStatus(s.status))
+      .catch(err => setStripeMsg(err.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const startVerification = async () => {
+    setBusy(true);
+    setStripeMsg(null);
+    try {
+      const { url } = await stripeConnectStart();
+      window.location.href = url; // Stripe-hosted KYC (identity / SSN / EIN)
+    } catch (err) {
+      setStripeMsg(err.message);
+      setBusy(false);
+    }
+  };
+
+  const verified = status === "verified";
+  const statusLabel = { unverified: "Not started", pending: "In progress", verified: "Verified" }[status] || status;
+
+  const items = [
+    {
+      done: !!pInfo,
+      title: "Create your LensHive profile",
+      desc: pInfo
+        ? `Your public profile “${pInfo.name}” is live.`
+        : "Finish onboarding to create your public profile.",
+    },
+    {
+      done: verified,
+      title: "Verify your identity & business",
+      desc: "Stripe securely collects your SSN (individuals) or EIN/TIN (businesses) to verify you and enable payouts. Required before you can accept bookings.",
+      action: !verified && (
+        <button onClick={startVerification} disabled={busy} style={{ ...primaryBtnSm, opacity: busy ? 0.6 : 1 }}>
+          {busy ? "Opening Stripe…" : status === "pending" ? "Continue verification" : "Start verification"}
+        </button>
+      ),
+      chip: statusLabel,
+    },
+    {
+      done: (pInfo?.startingPrice || 0) > 0,
+      title: "Set your starting price",
+      desc: (pInfo?.startingPrice || 0) > 0
+        ? `Clients see “from $${pInfo.startingPrice}” on your profile.`
+        : "Add a starting price in Services & pricing so clients know what to expect.",
+    },
+    {
+      done: false,
+      title: "Add portfolio photos",
+      desc: "Tag photos to LensHive spots so clients searching those locations find you.",
+      optional: true,
+    },
+  ];
+
+  return (
+    <div style={{ maxWidth: 760 }}>
+      <SectionHeader title="Start earning" subtitle="Complete these steps to take bookings and get paid through LensHive." />
+
+      {!verified && (
+        <div style={{
+          marginTop: 20, padding: "14px 18px", borderRadius: "var(--card-radius)",
+          border: "1px solid color-mix(in oklab, var(--accent) 40%, transparent)",
+          background: "color-mix(in oklab, var(--accent) 7%, transparent)",
+          fontSize: 13, lineHeight: 1.55,
+        }}>
+          <strong>Your public profile is live, but bookings are locked.</strong>{" "}
+          Clients can view your work and profile; they'll be able to book and pay you once your
+          identity or business is verified.
+        </div>
+      )}
+      {verified && (
+        <div style={{
+          marginTop: 20, padding: "14px 18px", borderRadius: "var(--card-radius)",
+          border: "1px solid color-mix(in oklab, #2d5d4f 35%, transparent)",
+          background: "color-mix(in oklab, #2d5d4f 8%, transparent)",
+          color: "#2d5d4f", fontSize: 13, fontWeight: 500,
+        }}>
+          You're verified — your profile can take bookings and payouts are enabled.
+        </div>
+      )}
+      {stripeMsg && (
+        <div style={{ marginTop: 14, fontSize: 13, color: "#b3261e" }}>{stripeMsg}</div>
+      )}
+
+      <div style={{ marginTop: 20, border: "1px solid var(--line)", borderRadius: "var(--card-radius)", background: "var(--surface)", overflow: "hidden" }}>
+        {items.map((it, i) => (
+          <div key={it.title} style={{
+            display: "flex", alignItems: "flex-start", gap: 14,
+            padding: "16px 18px",
+            borderTop: i > 0 ? "1px solid var(--line)" : "none",
+          }}>
+            <span style={{
+              width: 22, height: 22, borderRadius: "50%", flexShrink: 0, marginTop: 1,
+              background: it.done ? "#2d5d4f" : "var(--chip)",
+              color: "white", display: "grid", placeItems: "center",
+            }}>{it.done ? <CheckIcon size={11} /> : <span style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600 }}>{i + 1}</span>}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}>
+                {it.title}
+                {it.optional && <Badge kind="outline">Optional</Badge>}
+                {it.chip && !it.done && <Badge kind={it.chip === "In progress" ? "accent" : "default"}>{it.chip}</Badge>}
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>{it.desc}</div>
+              {it.action && <div style={{ marginTop: 10 }}>{it.action}</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SettingsSection() {
   return (
     <div>
@@ -406,14 +682,29 @@ function SettingsSection() {
   );
 }
 
-const DASHBOARD_SECTIONS = ["overview", "portfolio", "profile", "services", "spots", "inquiries", "reviews", "settings"];
+const DASHBOARD_SECTIONS = ["overview", "portfolio", "profile", "services", "spots", "earnings", "inquiries", "reviews", "settings"];
 
 export function DashboardPage({ nav, openPhotographer, params, setParams }) {
-  const { photographers: PHOTOGRAPHERS } = useData();
-  if (!PHOTOGRAPHERS.length) return null;
+  const { photographers: PHOTOGRAPHERS, reload } = useData();
+  const { me: authMe } = useAuth();
+
+  // The signed-in photographer's own catalog row (created at onboarding).
+  // The catalog list is fetched at app start, so refresh once if it doesn't
+  // have the freshly created profile yet. Falls back to the first seeded
+  // photographer so the mock-driven sections still render.
+  const own = PHOTOGRAPHERS.find(p => p.userId === authMe?.id)
+    || PHOTOGRAPHERS.find(p => p.id === authMe?.photographer?.slug);
+  useEffect(() => {
+    if (authMe?.photographer && !own) reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authMe?.photographer?.slug, own]);
+
+  const needsVerification = authMe?.photographer && authMe.photographer.verificationStatus !== "verified";
+
   const section = DASHBOARD_SECTIONS.includes(params?.section) ? params.section : "portfolio";
   const setSection = (s) => setParams({ section: s === "portfolio" ? null : s });
-  const me = PHOTOGRAPHERS[0];
+  if (!PHOTOGRAPHERS.length) return null;
+  const me = own || PHOTOGRAPHERS[0];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
@@ -444,6 +735,7 @@ export function DashboardPage({ nav, openPhotographer, params, setParams }) {
             { k: "profile", label: "Profile info" },
             { k: "services", label: "Services & pricing" },
             { k: "spots", label: "Photo spots", count: 3 },
+            { k: "earnings", label: "Start earning", count: needsVerification ? "!" : null, badge: needsVerification },
             { k: "inquiries", label: "Inquiries", count: 2, badge: true },
             { k: "reviews", label: "Reviews" },
             { k: "settings", label: "Settings" },
@@ -474,6 +766,7 @@ export function DashboardPage({ nav, openPhotographer, params, setParams }) {
           {section === "profile" && <ProfileInfoSection me={me} />}
           {section === "services" && <ServicesSection me={me} />}
           {section === "spots" && <SpotsSection me={me} />}
+          {section === "earnings" && <EarningsSection authMe={authMe} params={params} />}
           {section === "inquiries" && <InquiriesSection me={me} />}
           {section === "reviews" && <ReviewsSection me={me} />}
           {section === "settings" && <SettingsSection me={me} />}

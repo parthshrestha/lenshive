@@ -143,10 +143,20 @@ function MapFallback({ height, message }) {
   );
 }
 
-export function MapView({ items = [], activeId, onSelectItem, kind = "photographer", height = "100%", style: mapStyle = "standard", apiKey, center: userLocation }) {
+// The Maps JS loader is a singleton that throws if it's ever re-invoked with
+// different options — so never call useJsApiLoader until the real API key is
+// available (it arrives async from /api/config, "" on first render).
+export function MapView(props) {
+  if (!props.apiKey) {
+    return <MapFallback height={props.height || "100%"} message="Loading map…" />;
+  }
+  return <MapViewLoaded {...props} />;
+}
+
+function MapViewLoaded({ items = [], activeId, onSelectItem, kind = "photographer", height = "100%", style: mapStyle = "standard", apiKey, center: userLocation }) {
   const { isLoaded, loadError } = useJsApiLoader({
     id: "lenshive-google-maps",
-    googleMapsApiKey: apiKey || "",
+    googleMapsApiKey: apiKey,
   });
 
   const mapRef = useRef(null);
@@ -182,7 +192,6 @@ export function MapView({ items = [], activeId, onSelectItem, kind = "photograph
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, userLocation]);
 
-  if (!apiKey) return <MapFallback height={height} message="Map unavailable — add a Google Maps API key to the backend (.env)." />;
   if (loadError) return <MapFallback height={height} message="Failed to load Google Maps." />;
   if (!isLoaded) return <MapFallback height={height} message="Loading map…" />;
 

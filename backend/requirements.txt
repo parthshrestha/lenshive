@@ -9,3 +9,4 @@ cryptography
 alembic
 passlib[bcrypt]
 python-jose[cryptography]
+stripe

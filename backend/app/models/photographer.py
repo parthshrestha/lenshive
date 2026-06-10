@@ -4,10 +4,11 @@ from datetime import datetime
 from decimal import Decimal
 from typing import List, Optional
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import BigInteger, DateTime, Enum, ForeignKey, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..db import Base
+from .enums import VerificationStatus
 
 
 class Photographer(Base):
@@ -30,6 +31,12 @@ class Photographer(Base):
     bookings_count: Mapped[int] = mapped_column(default=0)
     lat: Mapped[float] = mapped_column()
     lng: Mapped[float] = mapped_column()
+    # Stripe Connect Express account + KYC progress. Unverified photographers
+    # have a public profile but can't take bookings.
+    stripe_account_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    verification_status: Mapped[VerificationStatus] = mapped_column(
+        Enum(VerificationStatus), default=VerificationStatus.unverified,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     user: Mapped[Optional["User"]] = relationship(back_populates="photographer")

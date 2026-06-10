@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { fetchPhotographers, fetchSpots } from "./api";
 import { PHOTOGRAPHERS as MOCK_PHOTOGRAPHERS, SPOTS as MOCK_SPOTS } from "../data";
 
@@ -7,6 +7,7 @@ const DataContext = createContext({
   spots: [],
   loading: true,
   error: null,
+  reload: async () => {},
 });
 
 // Falls back to mock data when the API is unreachable so the UI keeps working
@@ -14,23 +15,22 @@ const DataContext = createContext({
 export function DataProvider({ children }) {
   const [state, setState] = useState({ photographers: [], spots: [], loading: true, error: null });
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [photographers, spots] = await Promise.all([fetchPhotographers(), fetchSpots()]);
-        if (!cancelled) setState({ photographers, spots, loading: false, error: null });
-      } catch (err) {
-        if (!cancelled) {
-          console.warn("API unreachable, using mock data:", err.message);
-          setState({ photographers: MOCK_PHOTOGRAPHERS, spots: MOCK_SPOTS, loading: false, error: err });
-        }
-      }
-    })();
-    return () => { cancelled = true; };
+  const reload = useCallback(async () => {
+    try {
+      const [photographers, spots] = await Promise.all([fetchPhotographers(), fetchSpots()]);
+      setState({ photographers, spots, loading: false, error: null });
+    } catch (err) {
+      console.warn("API unreachable, using mock data:", err.message);
+      setState(prev => (prev.photographers.length
+        ? { ...prev, loading: false, error: err }
+        : { photographers: MOCK_PHOTOGRAPHERS, spots: MOCK_SPOTS, loading: false, error: err }));
+    }
   }, []);
 
-  return <DataContext.Provider value={state}>{children}</DataContext.Provider>;
+  useEffect(() => { reload(); }, [reload]);
+
+  const value = useMemo(() => ({ ...state, reload }), [state, reload]);
+  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }
 
 export function useData() {

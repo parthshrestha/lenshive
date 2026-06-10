@@ -6,7 +6,7 @@ registered with the shared `Base.registry` before any query / migration runs,
 so string-based relationships (e.g. `Mapped["Photographer"]`) resolve.
 """
 
-from .enums import BookingStatus, UserRole
+from .enums import BookingStatus, SuggestionStatus, UserRole, VerificationStatus
 from .user import User
 from .photographer import (
     Photographer,
@@ -15,12 +15,14 @@ from .photographer import (
     PhotographerStyle,
     PhotographerTrustSignal,
 )
-from .spot import Spot, SpotBestFor
+from .spot import Spot, SpotBestFor, SpotSuggestion
 from .booking import Booking
 
 __all__ = [
     "BookingStatus",
+    "SuggestionStatus",
     "UserRole",
+    "VerificationStatus",
     "User",
     "Photographer",
     "PhotographerService",
@@ -29,5 +31,6 @@ __all__ = [
     "PhotographerTrustSignal",
     "Spot",
     "SpotBestFor",
+    "SpotSuggestion",
     "Booking",
 ]

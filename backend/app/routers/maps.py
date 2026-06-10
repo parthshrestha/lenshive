@@ -74,6 +74,10 @@ async def geocode(
         "lng": loc["lng"],
         "label": _label(result),
         "formatted": result.get("formatted_address", address or ""),
+        # Result types let the client tell broad searches (locality, etc.)
+        # from specific places (park, point_of_interest, ...).
+        "types": result.get("types", []),
+        "placeId": result.get("place_id"),
     }
 
 

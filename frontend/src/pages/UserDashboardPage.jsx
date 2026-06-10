@@ -1,14 +1,17 @@
-import { Nav, PhotographerCard, SpotCard } from "../components";
+import { useEffect, useState } from "react";
+import { Badge, Nav, PhotographerCard, SpotCard } from "../components";
 import { useData } from "../lib/DataContext";
 import { useAuth } from "../lib/AuthContext";
+import { fetchMySuggestions, submitSuggestion } from "../lib/api";
 
-const SECTIONS = ["overview", "bookings", "inquiries", "saved", "settings"];
+const SECTIONS = ["overview", "bookings", "inquiries", "saved", "suggest", "settings"];
 
 const NAV_ITEMS = [
   { k: "overview", label: "Overview" },
   { k: "bookings", label: "Bookings" },
   { k: "inquiries", label: "Inquiries" },
   { k: "saved", label: "Saved" },
+  { k: "suggest", label: "Suggest a spot" },
   { k: "settings", label: "Settings" },
 ];
 
@@ -96,6 +99,7 @@ export function UserDashboardPage({ nav, openPhotographer, openSpot, params, set
               openSpot={openSpot}
             />
           )}
+          {section === "suggest" && <SuggestSpotSection />}
           {section === "settings" && <SettingsSection me={me} />}
         </main>
       </div>
@@ -197,6 +201,142 @@ function SavedSection({ photographers, spots, openPhotographer, openSpot }) {
           {spots.map(s => <SpotCard key={s.id} spot={s} onOpen={openSpot} />)}
         </div>
       </section>
+    </div>
+  );
+}
+
+const suggestInput = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "9px 11px",
+  borderRadius: 9,
+  border: "1px solid var(--line)",
+  background: "var(--bg)",
+  color: "var(--text)",
+  fontSize: 13.5,
+  outline: "none",
+};
+
+const suggestLabel = {
+  display: "block",
+  marginBottom: 5,
+  fontSize: 12,
+  fontWeight: 600,
+  color: "var(--muted)",
+  textTransform: "uppercase",
+  letterSpacing: ".05em",
+};
+
+// Users pitch new photo spots here; admins review them in the admin
+// dashboard and approved ones become real locations.
+function SuggestSpotSection() {
+  const [form, setForm] = useState({ name: "", city: "", notes: "" });
+  const [mine, setMine] = useState([]);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(null);
+  const [sent, setSent] = useState(false);
+
+  useEffect(() => {
+    fetchMySuggestions().then(setMine).catch(() => {});
+  }, []);
+
+  const submit = async () => {
+    if (!form.name.trim() || !form.city.trim()) {
+      setError("Please fill in the spot name and city.");
+      return;
+    }
+    setSending(true);
+    setError(null);
+    try {
+      const created = await submitSuggestion({
+        name: form.name.trim(),
+        city: form.city.trim(),
+        notes: form.notes.trim(),
+      });
+      setMine(prev => [created, ...prev]);
+      setForm({ name: "", city: "", notes: "" });
+      setSent(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const statusKind = { pending: "accent", approved: "verified", rejected: "outline" };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 640 }}>
+      <header>
+        <h1 style={sectionTitle}>Suggest a photo spot</h1>
+        <p style={{ ...muted, marginTop: 8 }}>
+          Know a great location that's missing? Tell us about it — our team reviews
+          every suggestion and adds the best ones to LensHive.
+        </p>
+      </header>
+
+      <div style={card}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div>
+            <label style={suggestLabel}>Spot name</label>
+            <input
+              style={suggestInput}
+              value={form.name}
+              onChange={e => { setForm(f => ({ ...f, name: e.target.value })); setSent(false); }}
+              placeholder="Chautauqua Park"
+            />
+          </div>
+          <div>
+            <label style={suggestLabel}>City</label>
+            <input
+              style={suggestInput}
+              value={form.city}
+              onChange={e => { setForm(f => ({ ...f, city: e.target.value })); setSent(false); }}
+              placeholder="Boulder, CO"
+            />
+          </div>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={suggestLabel}>Why is it great?</label>
+            <textarea
+              style={{ ...suggestInput, resize: "vertical", fontFamily: "inherit" }}
+              rows={3}
+              value={form.notes}
+              onChange={e => { setForm(f => ({ ...f, notes: e.target.value })); setSent(false); }}
+              placeholder="Wildflowers in June, mountain backdrop, free parking…"
+            />
+          </div>
+        </div>
+        {error && <div style={{ marginTop: 12, fontSize: 13, color: "#b3261e" }}>{error}</div>}
+        {sent && !error && <div style={{ marginTop: 12, fontSize: 13, color: "#2d5d4f" }}>Thanks! Your suggestion is in the review queue.</div>}
+        <button
+          onClick={submit}
+          disabled={sending}
+          style={{
+            all: "unset", cursor: "default", marginTop: 16, display: "inline-block",
+            background: "var(--accent)", color: "white", padding: "8px 16px",
+            borderRadius: 8, fontSize: 13, fontWeight: 600, opacity: sending ? 0.6 : 1,
+          }}
+        >
+          {sending ? "Sending…" : "Submit suggestion"}
+        </button>
+      </div>
+
+      {mine.length > 0 && (
+        <section>
+          <h2 style={{ ...sectionTitle, fontSize: 16, marginBottom: 12 }}>Your suggestions</h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {mine.map(s => (
+              <div key={s.id} style={{ ...card, display: "flex", alignItems: "center", gap: 10, padding: "12px 16px" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 600 }}>{s.name}</span>
+                  <span style={{ fontSize: 12.5, color: "var(--muted)", marginLeft: 8 }}>{s.city}</span>
+                </div>
+                <Badge kind={statusKind[s.status] || "default"}>{s.status}</Badge>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

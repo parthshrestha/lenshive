@@ -1,18 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AuthPage, DashboardPage, ForgotPasswordPage, HomePage, ProfilePage, SearchPage, SpotPage, UserDashboardPage } from "./pages";
-import { API_BASE, DEFAULT_LOCATION, geocodeAddress, geocodePlaceId, getBrowserPosition, reverseGeocode } from "./lib/location";
+import { AdminDashboardPage, AuthPage, DashboardPage, ForgotPasswordPage, HomePage, OnboardingPage, ProfilePage, SearchPage, SpotPage, UserDashboardPage } from "./pages";
+import { API_BASE, DEFAULT_LOCATION, geocodeAddress, geocodePlaceId, getBrowserPosition, isBroadPlace, reverseGeocode } from "./lib/location";
 import { DataProvider } from "./lib/DataContext";
 import { AuthProvider, useAuth } from "./lib/AuthContext";
 
-// Picks the right dashboard for the signed-in user's role. Creators
+// Picks the right dashboard for the signed-in user's role. Admins get the
+// admin dashboard (location management + suggestion review); creators
 // (photographers/videographers) get the creator dashboard; regular users
 // get the booking-side dashboard. Anyone not signed in gets bounced to /login.
 function DashboardRoute(props) {
   const { me, loading } = useAuth();
   useEffect(() => {
-    if (!loading && !me) props.nav("login");
+    if (loading) return;
+    if (!me) props.nav("login");
+    // First sign-in → role-specific onboarding questionnaire (admins skip).
+    else if (!me.onboarded) props.nav("onboarding");
   }, [loading, me, props]);
-  if (loading || !me) return null;
+  if (loading || !me || !me.onboarded) return null;
+  if (me.role === "admin") return <AdminDashboardPage {...props} />;
   const isCreator = me.role === "photographer" || me.role === "videographer";
   return isCreator ? <DashboardPage {...props} /> : <UserDashboardPage {...props} />;
 }
@@ -25,6 +30,7 @@ function routePath(route) {
     case "login": return "/login";
     case "signup": return "/signup";
     case "forgot": return "/forgot";
+    case "onboarding": return "/onboarding";
     case "dashboard": return "/dashboard";
     case "spot": return `/spot/${encodeURIComponent(route.spotId || "")}`;
     case "profile": return `/profile/${encodeURIComponent(route.photographerId || "")}`;
@@ -55,6 +61,7 @@ function pathToRoute(pathname, search) {
   if (pathname === "/login") return make("login");
   if (pathname === "/signup") return make("signup");
   if (pathname === "/forgot") return make("forgot");
+  if (pathname === "/onboarding") return make("onboarding");
   if (pathname === "/dashboard") return make("dashboard");
   if (pathname === "/search") return make("search");
   const spotMatch = pathname.match(/^\/spot\/([^/]+)\/?$/);
@@ -98,7 +105,8 @@ function AppShell() {
       const pos = await getBrowserPosition();
       const place = await reverseGeocode(pos.lat, pos.lng);
       // isMine === true so MapView renders the blue "you are here" dot.
-      setLocation({ label: place.label, lat: place.lat, lng: place.lng, isMine: true });
+      // kind "broad" — "around me" always means nearby portfolios, never a spot lookup.
+      setLocation({ label: place.label, lat: place.lat, lng: place.lng, isMine: true, kind: "broad" });
       return true;
     } catch {
       return false;
@@ -134,7 +142,16 @@ function AppShell() {
         label = chosen || place.label;
       }
       // isMine === false → the map renders a red search-result pin instead of the blue GPS dot.
-      setLocation({ label, lat: place.lat, lng: place.lng, isMine: false });
+      // kind tells SearchPage whether to do a spot lookup (specific place) or
+      // show photographers with nearby portfolios (city/area search).
+      setLocation({
+        label,
+        lat: place.lat,
+        lng: place.lng,
+        isMine: false,
+        kind: isBroadPlace(place.types) ? "broad" : "specific",
+        placeId: place.placeId || null,
+      });
     } catch {
       /* leave current location unchanged on failure */
     }
@@ -212,6 +229,7 @@ function AppShell() {
         <AuthPage {...routeProps} initialMode={route.name === "signup" ? "signup" : "signin"} />
       )}
       {route.name === "forgot" && <ForgotPasswordPage {...routeProps} />}
+      {route.name === "onboarding" && <OnboardingPage {...routeProps} />}
     </div>
   );
 }

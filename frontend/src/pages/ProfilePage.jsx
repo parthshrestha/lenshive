@@ -352,12 +352,29 @@ export function ProfilePage({ nav, photographerId, openSpot, params, setParams }
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 18 }}>
-              <button onClick={() => setShowQuote(true)} style={{
-                all: "unset", cursor: "default",
-                padding: "12px 0", textAlign: "center",
-                background: "var(--accent)", color: "white",
-                borderRadius: 8, fontSize: 14, fontWeight: 600,
-              }}>Request a quote</button>
+              {/* `verified === false` → photographer hasn't completed Stripe
+                  identity verification: public profile only, no bookings. */}
+              {p.verified === false ? (
+                <>
+                  <button disabled style={{
+                    all: "unset", cursor: "default",
+                    padding: "12px 0", textAlign: "center",
+                    background: "var(--chip)", color: "var(--muted)",
+                    borderRadius: 8, fontSize: 14, fontWeight: 600,
+                  }}>Not accepting bookings yet</button>
+                  <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5, textAlign: "center" }}>
+                    This photographer is finishing identity verification. You'll be able to
+                    request a quote once they're verified.
+                  </div>
+                </>
+              ) : (
+                <button onClick={() => setShowQuote(true)} style={{
+                  all: "unset", cursor: "default",
+                  padding: "12px 0", textAlign: "center",
+                  background: "var(--accent)", color: "white",
+                  borderRadius: 8, fontSize: 14, fontWeight: 600,
+                }}>Request a quote</button>
+              )}
               <button style={{
                 all: "unset", cursor: "default",
                 padding: "12px 0", textAlign: "center",

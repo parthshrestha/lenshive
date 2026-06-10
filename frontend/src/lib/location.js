@@ -16,6 +16,26 @@ export function haversineMiles(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
+// Geocoder result types that mean "an area", not a specific place. Searches
+// for these show photographers with nearby portfolios; anything else (parks,
+// POIs, addresses) is treated as a specific spot lookup.
+const BROAD_PLACE_TYPES = new Set([
+  "locality",
+  "postal_town",
+  "sublocality",
+  "sublocality_level_1",
+  "neighborhood",
+  "administrative_area_level_1",
+  "administrative_area_level_2",
+  "administrative_area_level_3",
+  "country",
+  "postal_code",
+]);
+
+export function isBroadPlace(types) {
+  return (types || []).some(t => BROAD_PLACE_TYPES.has(t));
+}
+
 export function getBrowserPosition(options = { timeout: 10000 }) {
   return new Promise((resolve, reject) => {
     if (!("geolocation" in navigator)) {
